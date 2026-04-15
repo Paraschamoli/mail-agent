@@ -15,6 +15,8 @@ from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agentmail import AgentMail
 
+from bindu.penguin.bindufy import bindufy
+
 # Skills loader
 from skills_loader import load_skills, get_skill_content
 
@@ -306,8 +308,13 @@ def run_orchestrator(*, sender, thread_id, inbox_id, message_id, raw_text, attac
         db.add(state)
         db.commit()
 
-    if state.status == "APPROVED" and len(state.missing_fields or []) == 0:
-        return {"status": "ignored", "reason": "already_approved"}
+    if state.status == "APPROVED":
+      print("  ✅ Already approved — skipping further processing")
+      return {
+          "status": "ignored",
+          "reason": "already_approved",
+          "thread_id": thread_id,
+      }
 
     # 1. Attachments
     print("  [1/4] 📎 attachment-handler")
@@ -644,7 +651,48 @@ def list_skills():
     }
 
 
+bindu_config = {
+    "author": "chandandakka2@gmail.com",
+    "name": "hr_triage_agent",
+    "description": "An HR triage agent that evaluates applicants, extracts required details, manages attachments, and replies with missing requirements.",
+    "deployment": {
+        "url": os.getenv("BINDU_DEPLOYMENT_URL", "http://localhost:3773"),
+        "expose": True,
+    },
+    "skills": [],
+}
+
+def bindu_handler(messages: list[dict[str, str]]):
+    latest_message = messages[-1]["content"] if messages else ""
+
+    result = triage_agent.run(f"""
+    You are the HR triage agent.
+
+    Process this incoming request:
+
+    {latest_message}
+    """)
+
+    return [
+        {
+            "role": "assistant",
+            "content": result.content,
+        }
+    ]
+    
 if __name__ == "__main__":
-    print("🚀 Starting on port 8000...")
-    print("📊 Dashboard: http://localhost:8000/dashboard\n")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import threading
+    import uvicorn
+
+    def start_fastapi():
+        print("🚀 Starting on port 8000...")
+        print("📊 Dashboard: http://localhost:8000/dashboard")
+        uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    # Start FastAPI in background thread
+    threading.Thread(target=start_fastapi, daemon=True).start()
+
+    print("🌻 Bindu Agent: http://localhost:3773")
+
+    # Run Bindu in main thread
+    bindufy(bindu_config, bindu_handler)

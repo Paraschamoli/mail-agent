@@ -1,9 +1,50 @@
 services:
-  hr-triage-agent:
-    build: .
-    container_name: hr-triage-agent
+  db:
+    image: postgres:16-alpine
+    container_name: hrtriage-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hrtriage
+      POSTGRES_PASSWORD: hrtriage_password
+      POSTGRES_DB: hrtriage_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hrtriage -d hrtriage_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hrtriage-agent
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://hrtriage:hrtriage_password@db:5432/hrtriage_db
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      AGENTMAIL_API_KEY: ${AGENTMAIL_API_KEY}
+      AGENTMAIL_WEBHOOK_SECRET: ${AGENTMAIL_WEBHOOK_SECRET}
+      INBOX_ID: ${INBOX_ID}
+
+      # Bindu config
+      BINDU_DEPLOYMENT_URL: http://localhost:3773
+      BINDU_HOST: 0.0.0.0
+      BINDU_PORT: 3773
+
     ports:
       - "8000:8000"
-    env_file:
-      - .env
-    restart: unless-stopped
+      - "3773:3773"
+
+    volumes:
+      - uploads_data:/app/uploads
+
+volumes:
+  db_data:
+  uploads_data:
