@@ -1,4 +1,4 @@
-# Mail Agent 1 - HR Automation System
+﻿# Mail Agent 1 - HR Automation System
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
@@ -9,42 +9,42 @@ An intelligent email-based job application processing system that automates HR w
 ## 🚀 Features
 
 ### Core Capabilities
-- **Intelligent Email Processing**: Automatically parses job application emails and extracts structured data
-- **Dynamic Requirements**: Configurable per-inbox job requirements (LinkedIn, GitHub, resume, etc.)
-- **Attachment Management**: Smart classification and storage of resume/cover letter attachments
-- **Automated Triage**: AI-powered evaluation of application completeness
-- **Professional Replies**: Context-aware email composition for HR responses
-- **State Tracking**: Complete audit trail of application progress and communications
+- **Intelligent Email Processing**: Automatically parses job application emails and extracts structured data.
+- **Dynamic Requirements**: Configurable per-inbox job requirements such as LinkedIn, GitHub, resume, or portfolio.
+- **Attachment Management**: Smart classification and storage of resumes, cover letters, and other assets.
+- **Automated Triage**: AI-powered evaluation of application completeness.
+- **Professional Replies**: Context-aware email responses generated for follow-up communications.
+- **State Tracking**: Full audit trail of application progress and communications.
 
 ### Technical Features
-- **Modular Skills System**: Extensible architecture with deterministic and LLM-powered skills
-- **Real-time Processing**: Webhook-based email processing with immediate responses
-- **Database Persistence**: PostgreSQL with comprehensive state management
-- **Docker Ready**: Containerized deployment with docker-compose
-- **API-First Design**: RESTful APIs for integration and monitoring
-- **OpenAI Integration**: Advanced AI capabilities via OpenRouter
+- **Modular Skills System**: Extensible architecture with deterministic and LLM-powered skills.
+- **Real-time Processing**: AgentMail webhook-based email processing.
+- **Database Persistence**: Built on SQLAlchemy with support for local SQLite and production databases.
+- **Docker Ready**: Containerized deployment with `docker-compose`.
+- **API-First Design**: REST endpoints for inbox requirements, applicant state, and file access.
+- **OpenAI Integration**: Advanced AI capabilities via OpenRouter.
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   AgentMail     │───▶│   Mail Agent    │───▶│   PostgreSQL    │
-│   Webhooks      │    │   FastAPI       │    │   Database      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                              │
-                              ▼
-                       ┌─────────────────┐
-                       │   Skills Engine │
-                       │                 │
-                       │ • Email Parser  │
-                       │ • Attachment    │
-                       │ • Triage        │
-                       │ • Reply Composer│
-                       │ • Requirements  │
-                       └─────────────────┘
+┌─────────────────┐    ┌───────────┐    ┌─────────────────┐
+│   AgentMail     │───▶│   ngrok   │───▶│   Mail Agent    │
+│   Webhooks      │    │ (HTTPS)   │    │   FastAPI       │
+└─────────────────┘    └───────────┘    └─────────────────┘
+                                      │
+                                      ▼
+                               ┌─────────────────┐
+                               │   Skills Engine │
+                               │                 │
+                               │ • Email Parser  │
+                               │ • Attachment    │
+                               │ • Triage        │
+                               │ • Reply Composer│
+                               │ • Requirements  │
+                               └─────────────────┘
 ```
 
-### Skills Overview
+## 🧠 Skills Overview
 
 | Skill | Type | Purpose |
 |-------|------|---------|
@@ -54,142 +54,192 @@ An intelligent email-based job application processing system that automates HR w
 | **HR Reply Composer** | LLM | Generates professional email responses |
 | **Requirement Manager** | Deterministic | Manages per-inbox job requirements |
 
-## 📋 Prerequisites
+## 🚀 Zero to Hero: Running Locally
 
-- **Python**: 3.12 or higher
-- **PostgreSQL**: 13+ database
-- **Docker**: For containerized deployment
-- **API Keys**:
-  - OpenRouter API key (for OpenAI models)
-  - AgentMail API key
-  - Database connection string
+This project is designed to run locally with minimal setup. Follow these steps to get the agent processing emails in under 5 minutes.
 
-## 🛠️ Installation
+### 1. Prepare your environment
 
-### Local Development
+```bash
+git clone <repository-url>
+cd mail-agent1
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -e .
+```
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd mail-agent1
-   ```
+### 2. Create AgentMail credentials
 
-2. **Create virtual environment**
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   ```
+- Sign in to AgentMail.
+- Create a new inbox for incoming applications.
+- Copy your AgentMail API Key.
+- Copy the Inbox ID.
+- Save the Webhook Secret if AgentMail provides one.
 
-3. **Install dependencies**
-   ```bash
-   pip install -e .
-   ```
+### 3. Create your `.env` file
 
-4. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your API keys and database URL
-   ```
+Use SQLite for the fastest local setup.
+Get your agentmail related keys and inbox from [agentmail.to](https://www.agentmail.to/)
 
-5. **Run database migrations**
-   ```bash
-   python -c "from main import Base, engine; Base.metadata.create_all(bind=engine)"
-   ```
-
-6. **Start the application**
-   ```bash
-   uvicorn main:app --reload
-   ```
-
-### Docker Deployment
-
-1. **Build and run with docker-compose**
-   ```bash
-   docker-compose up --build
-   ```
-
-2. **Or build manually**
-   ```bash
-   docker build -t mail-agent1 .
-   docker run -p 8000:8000 --env-file .env mail-agent1
-   ```
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `OPENROUTER_API_KEY` | API key for OpenRouter/OpenAI | Yes |
-| `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `AGENTMAIL_API_KEY` | AgentMail service API key | Yes |
-| `INBOX_ID` | AgentMail inbox identifier | Yes |
-
-### Example .env file
 ```bash
 OPENROUTER_API_KEY=sk-or-v1-...
-DATABASE_URL=postgresql://user:password@localhost:5432/mailagent
-AGENTMAIL_API_KEY=am-...
+DATABASE_URL=sqlite:///./test.db
+AGENTMAIL_API_KEY=your-agentmail-api-key
 INBOX_ID=your-inbox-id
 ```
 
-## 📖 Usage
+> `DATABASE_URL` can be a local SQLite file like `sqlite:///./test.db`, so you do not need PostgreSQL to run locally.
 
-### API Endpoints
+### 4. Initialize the database
 
-#### Health Check
-```http
-GET /health
+```bash
+python -c "from main import Base, engine; Base.metadata.create_all(bind=engine)"
 ```
 
-#### Webhook Processing
-```http
-POST /webhook
-Content-Type: application/json
+### 5. Start the FastAPI server in the primary terminal
 
+```bash
+uvicorn main:app --reload
+```
+
+You should see the app start and confirm the dashboard URL.
+
+### 6. Start `ngrok` in a second terminal
+
+```bash
+ngrok http 8000
+```
+
+This opens a secure public HTTPS endpoint for AgentMail to call your local app.
+
+### 7. Register the webhook in AgentMail
+
+- Copy the `https://...` URL from `ngrok`.
+- Set the webhook target to the root endpoint.
+- Example:
+
+```text
+https://abcd1234.ngrok.io/
+```
+
+- Include a trailing slash if AgentMail requires it.
+- Save the webhook.
+
+### 8. Verify local UIs
+
+- Admin Dashboard: `http://localhost:8000/dashboard`
+- Bindu Agent interface: `http://localhost:3773`
+- FastAPI docs: `http://localhost:8000/docs`
+
+## 🔍 Monitoring & UIs
+
+Use these URLs to verify that the app is running and to inspect health and state.
+
+- `http://localhost:8000/dashboard` — Admin dashboard UI.
+- `http://localhost:3773` — Local Bindu agent interface.
+- `http://localhost:8000/docs` — FastAPI API documentation.
+
+## 🧪 Testing the System
+
+### E2E test with a real AgentMail email
+
+1. Send an email to the configured AgentMail inbox.
+2. Watch the `uvicorn` logs in the primary terminal.
+3. Confirm the webhook event and processing output.
+4. Open `http://localhost:8000/dashboard` to review state.
+
+### Manual webhook simulation with `curl`
+
+Send a simulated AgentMail webhook payload directly to `POST /`.
+
+```bash
+curl -X POST http://localhost:8000/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event_type": "message.received",
+    "message": {
+      "from_": "applicant@example.com",
+      "thread_id": "thread-123",
+      "inbox_id": "your-inbox-id",
+      "message_id": "msg-123",
+      "text": "Hello, I am applying for the job. My LinkedIn is https://linkedin.com/in/example.",
+      "attachments": []
+    }
+  }'
+```
+
+A successful response looks like:
+
+```json
 {
-  "thread_id": "thread-123",
-  "sender_email": "applicant@example.com",
-  "email_body": "Hi, I'm applying...",
-  "attachments": [...]
+  "status": "processed",
+  "applicant_status": "PENDING"
 }
 ```
 
-#### Job Requirements Management
-```http
-POST /requirements/{inbox_id}
-GET /requirements/{inbox_id}
-PUT /requirements/{inbox_id}
-DELETE /requirements/{inbox_id}
+## 📡 API Endpoints
+
+### Webhook processing
+
+- `POST /` — AgentMail webhook handler for `message.received` events.
+
+### Applicant state
+
+- `GET /applicants` — List all applicants.
+- `GET /applicants/{thread_id}` — Fetch state for one thread.
+
+### Requirements management
+
+- `POST /requirements/{inbox_id}` — Create required fields.
+- `PUT /requirements/{inbox_id}` — Update required fields.
+- `GET /requirements/{inbox_id}` — Retrieve requirements.
+- `DELETE /requirements/{inbox_id}` — Reset custom requirements.
+
+### Files
+
+- `GET /files/{file_id}` — Download saved attachment by record ID.
+
+### Diagnostics
+
+- `GET /skills` — List loaded skill metadata.
+- `GET /dashboard` — Serve the admin dashboard.
+
+## ⚙️ Configuration
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `OPENROUTER_API_KEY` | OpenRouter/OpenAI API key | Yes |
+| `DATABASE_URL` | Database connection URL | Yes |
+| `AGENTMAIL_API_KEY` | AgentMail API key | Yes |
+| `INBOX_ID` | AgentMail inbox ID | Yes |
+| `AGENTMAIL_WEBHOOK_SECRET` | AgentMail Webhook Secret Key | Yes |
+
+### Example `.env`
+
+```bash
+OPENROUTER_API_KEY=sk-or-v1-...
+DATABASE_URL=sqlite:///./test.db
+AGENTMAIL_API_KEY=your-agentmail-api-key
+INBOX_ID=your-inbox-id
+AGENTMAIL_WEBHOOK_SECRET=your-agentmail-webhook-secret
 ```
 
-#### Application Status
-```http
-GET /applications/{thread_id}
-GET /applications
-```
+## 🏗️ Project Structure
 
-### Testing the System
-
-1. **Send a test email** to your AgentMail inbox
-2. **Check application status** via API
-3. **Review processed data** in the database
-
-## 🔧 Development
-
-### Project Structure
 ```
 mail-agent1/
-├── main.py                 # FastAPI application
-├── main1.py               # Alternative entry point
-├── skills/                # AI skills directory
+├── main.py                 # FastAPI application + webhook orchestrator
+├── main1.py                # Alternative entry point
+├── skills/                 # Skill definitions for the agent
 │   ├── email-parser.md
 │   ├── attachment-handler.md
 │   ├── application-triage.md
 │   ├── hr-reply-composer.md
 │   └── requirement-manager.md
-├── skills_loader.py       # Skills loading utilities
-├── uploads/               # File storage
+├── skills_loader.py        # Skill loading utilities
+├── static/
+│   └── dashboard.html      # Admin dashboard HTML
+├── uploads/                # Stored attachments
 │   ├── resumes/
 │   ├── cover_letters/
 │   └── other/
@@ -199,35 +249,17 @@ mail-agent1/
 └── README.md
 ```
 
-### Running Tests
-```bash
-# Install test dependencies
-pip install pytest
+## 🔧 Development Notes
 
-# Run tests
-pytest
-```
-
-### Adding New Skills
-
-1. Create a new `.md` file in `skills/` directory
-2. Follow the skill file format with YAML frontmatter and markdown body
-3. Implement the required sections: Context, Logic, Output Format
-4. Update `skills_loader.py` if needed
+- `DATABASE_URL` can be local SQLite for immediate testing.
+- Run `python -c "from main import Base, engine; Base.metadata.create_all(bind=engine)"` after updating the database URL.
+- The app ignores webhook events that are not `message.received`.
+- The webhook root endpoint is `POST /`.
 
 ## 🚀 Deployment
 
-### Production Checklist
+### Docker Compose
 
-- [ ] Set `DEBUG=false` in environment
-- [ ] Use production database (not SQLite)
-- [ ] Configure proper logging
-- [ ] Set up monitoring and alerts
-- [ ] Enable HTTPS/SSL
-- [ ] Configure backup strategy
-- [ ] Set up CI/CD pipeline
-
-### Docker Compose Production
 ```yaml
 version: '3.8'
 services:
@@ -253,39 +285,11 @@ services:
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Development Guidelines
-
-- Follow PEP 8 style guidelines
-- Write comprehensive docstrings
-- Add unit tests for new features
-- Update documentation for API changes
-- Ensure all tests pass before submitting PR
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [FastAPI](https://fastapi.tiangolo.com/) - Modern Python web framework
-- [AgentMail](https://agentmail.com/) - Email processing service
-- [OpenAI](https://openai.com/) - AI model provider
-- [SQLAlchemy](https://sqlalchemy.org/) - Database toolkit
-- [Agno](https://github.com/agno-ai/agno) - AI agent framework
-
-## 📞 Support
-
-For support and questions:
-- Open an issue on GitHub
-- Check the documentation
-- Review the skills files for implementation details
+1. Fork the repository.
+2. Create a branch: `git checkout -b feature/your-feature`.
+3. Commit your work: `git commit -m 'Add feature'`.
+4. Push and open a pull request.
 
 ---
 
-**Built with ❤️ for efficient HR automation**
+**Built for fast local setup, transparent debugging, and real-world HR automation workflows.**
