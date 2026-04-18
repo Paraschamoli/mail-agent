@@ -1,3 +1,5 @@
+import nest_asyncio
+
 import os
 import uvicorn
 import json
@@ -19,12 +21,24 @@ from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agentmail import AgentMail
 
+nest_asyncio.apply()
+
+from hindsight_agno import HindsightTools, memory_instructions, configure
+
 from bindu.penguin.bindufy import bindufy
 
 # Skills loader
 from skills_loader import load_skills, get_skill_content
 
 load_dotenv()
+
+HINDSIGHT_API_URL = os.getenv("HINDSIGHT_API_URL", "http://localhost:8888")
+HINDSIGHT_API_KEY = os.getenv("HINDSIGHT_API_KEY", "")
+
+configure(
+    hindsight_api_url=HINDSIGHT_API_URL,
+    api_key=HINDSIGHT_API_KEY,
+)
 
 # ============================================================
 # STRUCTURED LOGGING
@@ -94,21 +108,43 @@ SPAM_KEYWORDS = [
     "click here", "free money", "urgent", "act now"
 ]
 
+def check_candidate_history(sender: str) -> tuple[bool, str]:
+    try:
+        result = get_spam_tools().recall_memory(
+            run_context=None,
+            query=f"sender {sender} spam complaints history",
+        )
+        if result and ("confirmed spam" in result.lower() or "blocked" in result.lower()):
+            return True, result[:200]
+    except Exception as e:
+        logger.warning(f"Hindsight spam check failed for {sender}: {e}")
+    return False, ""
+
+
 def detect_spam(text: str, sender: str) -> tuple[bool, str]:
     """Simple keyword-based spam detection."""
     text_lower = text.lower()
     for keyword in SPAM_KEYWORDS:
         if keyword in text_lower:
+            get_spam_tools().retain_memory(run_context=None,
+                content=f"Sender {sender} flagged as spam because of keyword '{keyword}' on {datetime.now(timezone.utc)}"
+            )
             return True, f"Spam keyword detected: {keyword}"
     
     # Check for excessive capitalization
     if len(text) > 50 and (sum(1 for c in text if c.isupper()) / len(text)) > 0.7:
+        get_spam_tools().retain_memory(run_context=None,
+            content=f"Sender {sender} flagged as spam because of excessive capitalization on {datetime.now(timezone.utc)}"
+        )
         return True, "Excessive capitalization detected"
     
     # Check for excessive repetition
     if len(text) > 20:
         words = text.split()
         if len(set(words)) < len(words) * 0.3:
+            get_spam_tools().retain_memory(run_context=None,
+                content=f"Sender {sender} flagged as spam because of excessive repetition on {datetime.now(timezone.utc)}"
+            )
             return True, "Excessive repetition detected"
     
     return False, ""
@@ -700,7 +736,45 @@ def process_webhook_background(sender: str, thread_id: str, inbox_id: str, messa
 # 10. ORCHESTRATOR
 # ============================================================
 
+_hindsight_tools_cache: dict[str, HindsightTools] = {}
+
+def get_hindsight_tools(bank_id: str, **kwargs) -> HindsightTools:
+    """Return a cached HindsightTools instance for a given bank_id."""
+    if bank_id not in _hindsight_tools_cache:
+        _hindsight_tools_cache[bank_id] = HindsightTools(bank_id=bank_id, **kwargs)
+    return _hindsight_tools_cache[bank_id]
+
+def get_candidate_memory_tools(candidate_email: str) -> HindsightTools:
+    return get_hindsight_tools(
+        f"candidate:{candidate_email}",
+        enable_retain=True,
+        enable_recall=True,
+        enable_reflect=True,
+    )
+
+def get_spam_tools() -> HindsightTools:
+    return get_hindsight_tools("spam-registry")
+
+
 def run_orchestrator(*, sender, thread_id, inbox_id, message_id, raw_text, attachments, db):
+
+    def get_candidate_memory_context(candidate_email: str) -> str:
+        try:
+            tools = get_candidate_memory_tools(candidate_email)
+
+            memory_summary = tools.reflect_on_memory(
+                run_context=None,
+                query="Summarize candidate profile, skills, submitted documents, previous conversations, and missing information."
+            )
+
+            if memory_summary:
+                return f"KNOWN CANDIDATE FACTS FROM PREVIOUS INTERACTIONS:\n{memory_summary}"
+
+            return ""
+        except Exception as e:
+            logger.warning(f"Failed to fetch candidate memory for {candidate_email}: {e}")
+            return ""
+
     requirements = get_requirements_for_inbox(db, inbox_id)
     field_names = get_field_names(requirements)
     print(f"  📋 Requirements: {field_names}")
@@ -757,6 +831,8 @@ def run_orchestrator(*, sender, thread_id, inbox_id, message_id, raw_text, attac
     saved_files, extracted_texts = attachment_handler(attachments, thread_id, sender, inbox_id, message_id, db)
 
     # 2. Parse email with conversation history
+    candidate_memory = get_candidate_memory_context(sender)
+
     print("  [2/4] 🔍 email-parser")
     conversation_history = get_conversation_history(db, thread_id)
     print(f"  💬 Conversation history: {len(conversation_history)} messages")
@@ -781,6 +857,8 @@ def run_orchestrator(*, sender, thread_id, inbox_id, message_id, raw_text, attac
     current_known_data: {json.dumps(state.extracted_data)}
     attached_file_types: {json.dumps(list(saved_files.keys()))}
     required_fields: {json.dumps(requirements)}
+
+    {candidate_memory} 
 
     email_body:
     {raw_text}
@@ -867,8 +945,28 @@ def run_orchestrator(*, sender, thread_id, inbox_id, message_id, raw_text, attac
         resume_text = extracted_texts.get("resume", "")
         if resume_text:
             print("  [Tier 4] 📊 Scoring resume against requirements...")
-            score_result = score_resume_against_requirements(resume_text, requirements, current_extracted)
+            score_result = score_resume_against_requirements(
+                resume_text,
+                requirements,
+                current_extracted
+            )
+
             state.extracted_data["_resume_score"] = score_result
+
+            # Retain this in Hindsight for future reflection
+            try:
+                tools = get_candidate_memory_tools(sender)
+                tools.retain_memory(
+                    run_context=None,
+                    content=(
+                        f"Resume scored {score_result.get('overall_score')}/100. "
+                        f"Strengths: {score_result.get('strengths')}. "
+                        f"Weaknesses: {score_result.get('weaknesses')}."
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Failed to store hindsight resume memory: {e}")
+
             print(f"  📊 Resume score: {score_result.get('overall_score', 0)}/100")
     else:
         state.status = "PENDING"
@@ -893,11 +991,23 @@ def run_orchestrator(*, sender, thread_id, inbox_id, message_id, raw_text, attac
         HR Team
         """.strip()
         else:
+            try:
+                tools = get_candidate_memory_tools(sender)
+                candidate_context_raw = tools.reflect_on_memory(
+                    run_context=None,
+                    query="Summarize candidate communication style, tone, previous replies, and conversation behavior."
+                )
+                candidate_context = f"CANDIDATE COMMUNICATION HISTORY:\n{candidate_context_raw}" if candidate_context_raw else ""
+            except Exception as e:
+                logger.warning(f"Failed to fetch candidate communication memory: {e}")
+                candidate_context = ""
+
             composer_prompt = f"""
         candidate_email: {sender}
         application_status: {state.status}
         missing_fields: {json.dumps(missing_field_objects)}
         items_received: {json.dumps(list(current_extracted.keys()))}
+        {candidate_context}
         """
             composer_response = retry_with_backoff(lambda: reply_composer_agent.run(composer_prompt))
             composer_result = _parse_agent_json(composer_response.content)
@@ -914,8 +1024,21 @@ def run_orchestrator(*, sender, thread_id, inbox_id, message_id, raw_text, attac
 
     if reply_text:
         print(f"  📤 Queueing reply to {sender}...")
-        # Tier 4: Use email queue for async sending with retry logic
         queue_email_for_sending(inbox_id, message_id, reply_text, thread_id)
+
+        try:
+            tools = get_candidate_memory_tools(sender)
+            tools.retain_memory(
+                run_context=None,
+                content=(
+                    f"Sent reply on {datetime.now(timezone.utc)}. "
+                    f"Application status: {state.status}. "
+                    f"Missing fields requested: {missing_fields}. "
+                    f"Reply summary: {reply_text[:300]}"
+                )
+            )
+        except Exception as e:
+            logger.warning(f"Failed to store reply memory: {e}")
 
     return {"status": "processed", "applicant_status": state.status}
 
@@ -1034,6 +1157,11 @@ async def handle_agentmail_webhook(request: Request, background_tasks: Backgroun
 
     db.commit()
     db.close()
+
+    is_known_spammer, spam_reason = check_candidate_history(sender)
+    if is_known_spammer:
+        logger.warning(f"Known bad actor blocked: {sender}")
+        return {"status": "blocked", "reason": spam_reason}
 
     # Queue background processing
     background_tasks.add_task(
