@@ -7,14 +7,21 @@ Routes are modularized in the routes/ directory.
 """
 
 import os
+import base64
 import logging
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
+# ── Langfuse / OpenTelemetry ──────────────────────────────────────────────────
+from opentelemetry import trace as trace_api
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from openinference.instrumentation.agno import AgnoInstrumentor
+
 from mail_agent.database import init_db
 from mail_agent.utils import RESUME_DIR, COVER_LETTER_DIR, OTHER_DIR
 
-# Import the bundled routers from the routes package
 from mail_agent.routes import (
     applicants_router,
     requirements_router,
@@ -26,7 +33,6 @@ load_dotenv()
 
 # ── config ────────────────────────────────────────────────────────────────────
 
-# Ensure upload directories exist
 for _d in [RESUME_DIR, COVER_LETTER_DIR, OTHER_DIR]:
     os.makedirs(_d, exist_ok=True)
 
@@ -37,7 +43,31 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize the database tables
+# ── Langfuse setup ────────────────────────────────────────────────────────────
+
+PUBLIC = os.getenv("LANGFUSE_PUBLIC_KEY")
+SECRET = os.getenv("LANGFUSE_SECRET_KEY")
+
+if not PUBLIC or not SECRET:
+    raise ValueError("Langfuse keys missing — set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY")
+
+auth = base64.b64encode(f"{PUBLIC}:{SECRET}".encode()).decode()
+
+exporter = OTLPSpanExporter(
+    endpoint="https://cloud.langfuse.com/api/public/otel/v1/traces",
+    headers={"Authorization": f"Basic {auth}"},
+)
+
+provider = TracerProvider()
+provider.add_span_processor(BatchSpanProcessor(exporter))
+trace_api.set_tracer_provider(provider)
+
+AgnoInstrumentor().instrument()
+
+logger.info("Langfuse tracing initialized ✅")
+
+# ── database ──────────────────────────────────────────────────────────────────
+
 init_db()
 
 # ── app ───────────────────────────────────────────────────────────────────────
@@ -57,6 +87,4 @@ if __name__ == "__main__":
     import uvicorn
     print("🚀 Starting on http://0.0.0.0:8000")
     print("📊 Dashboard: http://localhost:8000/dashboard")
-    
-    # Passing the app as a string allows uvicorn to support hot-reloading if desired
     uvicorn.run("mail_agent.main:app", host="0.0.0.0", port=8000)
