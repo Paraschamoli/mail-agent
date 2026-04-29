@@ -22,11 +22,12 @@ import json
 import logging
 
 from ._base import build_agent
+from mail_agent.model_factory import extract_json
 from mail_agent.utils import parse_json
 
 logger = logging.getLogger(__name__)
 
-_agent = build_agent("hr-reply-composer")
+_agent = build_agent("hr-reply-composer", agent_type="reply")
 
 # Fallback template used when the agent errors out.
 _FALLBACK_TEMPLATE = (
@@ -66,7 +67,8 @@ items_received: {json.dumps(received_keys)}
 
     try:
         response = _agent.run(prompt)
-        result = parse_json(response.content)
+        # Use extract_json for MiniMax (free-form output), parse_json for others
+        result = extract_json(response.content)
         return result.get("reply_draft", "")
     except Exception as exc:
         logger.error(f"[reply-composer] agent failed: {exc}")

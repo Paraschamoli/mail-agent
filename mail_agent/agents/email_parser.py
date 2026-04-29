@@ -27,12 +27,13 @@ import json
 import logging
 
 from ._base import build_agent
+from mail_agent.model_factory import extract_json
 from mail_agent.utils import parse_json
 
 logger = logging.getLogger(__name__)
 
 # Agent is built once at import time.
-_agent = build_agent("email-parser")
+_agent = build_agent("email-parser", agent_type="parser")
 
 
 def run(
@@ -62,7 +63,8 @@ email_body: {raw_text}
 
     try:
         response = _agent.run(prompt)
-        parsed = parse_json(response.content)
+        # Use extract_json for MiniMax (free-form output), parse_json for others
+        parsed = extract_json(response.content)
         return parsed
     except Exception as exc:
         logger.error(f"[email-parser] agent failed: {exc}")

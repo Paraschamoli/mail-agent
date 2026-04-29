@@ -21,11 +21,12 @@ import json
 import logging
 
 from ._base import build_agent
+from mail_agent.model_factory import extract_json
 from mail_agent.utils import parse_json
 
 logger = logging.getLogger(__name__)
 
-_agent = build_agent("application-triage")
+_agent = build_agent("application-triage", agent_type="triage")
 
 
 def run(*, requirements: list[dict], extracted_data: dict) -> dict:
@@ -42,7 +43,8 @@ extracted_data: {json.dumps(extracted_data)}
 
     try:
         response = _agent.run(prompt)
-        return parse_json(response.content)
+        # Use extract_json for MiniMax (free-form output), parse_json for others
+        return extract_json(response.content)
     except Exception as exc:
         logger.error(f"[triage] agent failed: {exc}")
         return {"missing_fields": [], "complete": False}
