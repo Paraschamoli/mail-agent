@@ -12,12 +12,8 @@ import logging
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
-# ── Langfuse / OpenTelemetry ──────────────────────────────────────────────────
 from opentelemetry import trace as trace_api
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from openinference.instrumentation.agno import AgnoInstrumentor
 
 from mail_agent.database import init_db
 from mail_agent.utils import RESUME_DIR, COVER_LETTER_DIR, OTHER_DIR
@@ -43,28 +39,48 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── Langfuse setup ────────────────────────────────────────────────────────────
+# ── Langfuse setup (guarded — runs only once) ─────────────────────────────────
 
-PUBLIC = os.getenv("LANGFUSE_PUBLIC_KEY")
-SECRET = os.getenv("LANGFUSE_SECRET_KEY")
+def _setup_tracing() -> None:
+    """
+    Set up Langfuse/OTel tracing exactly once.
+    Guard prevents double-init when uvicorn reloads the module
+    in its worker process, which caused:
+      - WARNING: Overriding of current TracerProvider is not allowed
+      - WARNING: Attempting to instrument while already instrumented
+    """
+    # If a real TracerProvider is already registered, skip entirely
+    if isinstance(trace_api.get_tracer_provider(), TracerProvider):
+        logger.debug("Tracing already initialized — skipping.")
+        return
 
-if not PUBLIC or not SECRET:
-    raise ValueError("Langfuse keys missing — set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY")
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from openinference.instrumentation.agno import AgnoInstrumentor
 
-auth = base64.b64encode(f"{PUBLIC}:{SECRET}".encode()).decode()
+    PUBLIC = os.getenv("LANGFUSE_PUBLIC_KEY")
+    SECRET = os.getenv("LANGFUSE_SECRET_KEY")
 
-exporter = OTLPSpanExporter(
-    endpoint="https://cloud.langfuse.com/api/public/otel/v1/traces",
-    headers={"Authorization": f"Basic {auth}"},
-)
+    if not PUBLIC or not SECRET:
+        raise ValueError("Langfuse keys missing — set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY")
 
-provider = TracerProvider()
-provider.add_span_processor(BatchSpanProcessor(exporter))
-trace_api.set_tracer_provider(provider)
+    auth = base64.b64encode(f"{PUBLIC}:{SECRET}".encode()).decode()
 
-AgnoInstrumentor().instrument()
+    exporter = OTLPSpanExporter(
+        endpoint="https://cloud.langfuse.com/api/public/otel/v1/traces",
+        headers={"Authorization": f"Basic {auth}"},
+    )
 
-logger.info("Langfuse tracing initialized ✅")
+    provider = TracerProvider()
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+    trace_api.set_tracer_provider(provider)
+
+    AgnoInstrumentor().instrument()
+
+    logger.info("Langfuse tracing initialized ✅")
+
+
+_setup_tracing()
 
 # ── database ──────────────────────────────────────────────────────────────────
 
