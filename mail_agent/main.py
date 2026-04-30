@@ -116,6 +116,78 @@ app.include_router(misc_router)
 
 if __name__ == "__main__":
     import uvicorn
-    print("🚀 Starting on http://0.0.0.0:8000")
-    print("📊 Dashboard: http://localhost:8000/dashboard")
-    uvicorn.run("mail_agent.main:app", host="0.0.0.0", port=8000)
+    
+    # Check if BINDU_DEPLOYMENT_URL is set to run in Bindu mode
+    if os.getenv("BINDU_DEPLOYMENT_URL"):
+        # Bindu mode
+        from bindu.penguin.bindufy import bindufy
+        from agno.agent import Agent
+        from mail_agent.agents._base import build_agent
+        from mail_agent.database import SessionLocal
+        from mail_agent.orchestrator import run as orchestrator_run
+        
+        # 1. Build your agent with whatever framework you prefer
+        agent = build_agent("email-parser", "parser")
+        
+        # 2. Tell Bindu who you are and where the agent lives
+        config = {
+            "author": "hr-automation@example.com",
+            "name": "mail_triage_agent",
+            "description": "AI-powered HR triage system that processes job applications via email",
+            "deployment": {
+                "url": os.getenv("BINDU_DEPLOYMENT_URL", "http://localhost:3773"),
+                "expose": True,
+            },
+        }
+        
+        # 3. The handler contract: (messages) -> response
+        def handler(messages):
+            if not messages:
+                return {"status": "error", "message": "No messages provided"}
+            
+            message = messages[-1]
+            required_fields = ["sender", "thread_id", "inbox_id", "message_id", "text"]
+            missing_fields = [field for field in required_fields if field not in message]
+            
+            if missing_fields:
+                return {
+                    "status": "error", 
+                    "message": f"Missing required fields: {', '.join(missing_fields)}"
+                }
+            
+            # Extract message data
+            sender = message["sender"]
+            thread_id = message["thread_id"]
+            inbox_id = message["inbox_id"]
+            message_id = message["message_id"]
+            raw_text = message["text"]
+            attachments = message.get("attachments", [])
+            
+            # Create database session
+            db = SessionLocal()
+            
+            try:
+                result = orchestrator_run(
+                    sender=sender,
+                    thread_id=thread_id,
+                    inbox_id=inbox_id,
+                    message_id=message_id,
+                    raw_text=raw_text,
+                    attachments=attachments,
+                    db=db,
+                )
+                return result
+                
+            except Exception as e:
+                return {"status": "error", "message": str(e)}
+            
+            finally:
+                db.close()
+        
+        # 4. bindufy() boots the HTTP server
+        bindufy(config, handler)
+    else:
+        # Normal FastAPI mode
+        print("Starting on http://0.0.0.0:8000")
+        print("Dashboard: http://localhost:8000/dashboard")
+        uvicorn.run("mail_agent.main:app", host="0.0.0.0", port=8000)
